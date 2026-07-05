@@ -1,0 +1,145 @@
+---
+- name: Install Rancher on RKE2 Kubernetes cluster
+  hosts: control
+  become: false
+
+  vars:
+    kubeconfig_path: /home/azureuser/.kube/config
+
+    # Replace this IP with your control-node public IP.
+    # Example: rancher.40.81.233.225.sslip.io
+    rancher_hostname: "rancher.40.81.233.225.sslip.io"
+
+    rancher_namespace: cattle-system
+    cert_manager_namespace: cert-manager
+
+    # For lab/project use only. Change this password.
+    rancher_bootstrap_password: "Admin@12345"
+
+    # You have 1 master and 1 worker, so keep replicas 1.
+    rancher_replicas: 1
+
+    # Current cert-manager version from cert-manager docs.
+    cert_manager_version: "v1.20.3"
+
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:{{ ansible_env.PATH }}"
+
+  tasks:
+    - name: Check Kubernetes cluster access
+      command: kubectl get nodes
+      register: cluster_nodes
+      changed_when: false
+
+    - name: Show cluster nodes
+      debug:
+        var: cluster_nodes.stdout_lines
+
+    - name: Check Helm is installed
+      command: helm version --short
+      register: helm_check
+      changed_when: false
+
+    - name: Show Helm version
+      debug:
+        var: helm_check.stdout
+
+    - name: Add Rancher stable Helm repository
+      command: helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+      register: rancher_repo
+      failed_when: rancher_repo.rc != 0 and 'already exists' not in rancher_repo.stderr
+      changed_when: "'has been added' in rancher_repo.stdout"
+
+    - name: Add Jetstack Helm repository for cert-manager
+      command: helm repo add jetstack https://charts.jetstack.io
+      register: jetstack_repo
+      failed_when: jetstack_repo.rc != 0 and 'already exists' not in jetstack_repo.stderr
+      changed_when: "'has been added' in jetstack_repo.stdout"
+
+    - name: Update Helm repositories
+      command: helm repo update
+      changed_when: false
+
+    - name: Install cert-manager
+      command: >
+        helm upgrade --install cert-manager jetstack/cert-manager
+        --namespace {{ cert_manager_namespace }}
+        --create-namespace
+        --version {{ cert_manager_version }}
+        --set crds.enabled=true
+        --wait
+        --timeout 10m
+      register: cert_manager_install
+
+    - name: Show cert-manager installation output
+      debug:
+        var: cert_manager_install.stdout_lines
+
+    - name: Wait for cert-manager controller
+      command: kubectl rollout status deployment/cert-manager -n {{ cert_manager_namespace }} --timeout=300s
+      changed_when: false
+
+    - name: Wait for cert-manager webhook
+      command: kubectl rollout status deployment/cert-manager-webhook -n {{ cert_manager_namespace }} --timeout=300s
+      changed_when: false
+
+    - name: Wait for cert-manager cainjector
+      command: kubectl rollout status deployment/cert-manager-cainjector -n {{ cert_manager_namespace }} --timeout=300s
+      changed_when: false
+
+    - name: Create Rancher namespace
+      command: kubectl create namespace {{ rancher_namespace }}
+      register: rancher_namespace_create
+      failed_when: rancher_namespace_create.rc != 0 and 'AlreadyExists' not in rancher_namespace_create.stderr
+      changed_when: "'created' in rancher_namespace_create.stdout"
+
+    - name: Install Rancher using Helm
+      command: >
+        helm upgrade --install rancher rancher-stable/rancher
+        --namespace {{ rancher_namespace }}
+        --set hostname={{ rancher_hostname }}
+        --set bootstrapPassword={{ rancher_bootstrap_password }}
+        --set replicas={{ rancher_replicas }}
+        --wait
+        --timeout 15m
+      register: rancher_install
+
+    - name: Show Rancher installation output
+      debug:
+        var: rancher_install.stdout_lines
+
+    - name: Wait for Rancher deployment rollout
+      command: kubectl rollout status deployment/rancher -n {{ rancher_namespace }} --timeout=600s
+      changed_when: false
+
+    - name: Show Rancher pods
+      command: kubectl get pods -n {{ rancher_namespace }} -o wide
+      register: rancher_pods
+      changed_when: false
+
+    - name: Print Rancher pods
+      debug:
+        var: rancher_pods.stdout_lines
+
+    - name: Show Rancher service
+      command: kubectl get svc -n {{ rancher_namespace }} -o wide
+      register: rancher_svc
+      changed_when: false
+
+    - name: Print Rancher service
+      debug:
+        var: rancher_svc.stdout_lines
+
+    - name: Show Rancher ingress
+      command: kubectl get ingress -n {{ rancher_namespace }} -o wide
+      register: rancher_ingress
+      changed_when: false
+
+    - name: Print Rancher access details
+      debug:
+        msg:
+          - "Rancher installation completed successfully."
+          - "Open this URL in browser: https://{{ rancher_hostname }}"
+          - "Username: admin"
+          - "Password: {{ rancher_bootstrap_password }}"

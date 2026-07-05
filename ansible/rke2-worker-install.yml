@@ -1,0 +1,52 @@
+---
+- name: Install and configure RKE2 agent/worker node
+  hosts: workers
+  become: yes
+
+  vars:
+    rke2_server_url: "https://40.81.233.225:9345"
+    rke2_token: "my-rke2-secret-token"
+
+  tasks:
+    - name: Create RKE2 config directory
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create RKE2 agent config file
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          server: "{{ rke2_server_url }}"
+          token: "{{ rke2_token }}"
+
+    - name: Install RKE2 agent
+      shell: curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sh -
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start RKE2 agent service
+      systemd:
+        name: rke2-agent.service
+        enabled: yes
+        state: started
+
+    - name: Show RKE2 agent service status
+      command: systemctl status rke2-agent.service --no-pager
+      register: rke2_agent_status
+      changed_when: false
+      failed_when: false
+
+    - name: Print RKE2 agent status
+      debug:
+        var: rke2_agent_status.stdout_lines

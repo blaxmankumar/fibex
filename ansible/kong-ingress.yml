@@ -1,0 +1,115 @@
+---
+- name: Install Kong Ingress Controller on RKE2 cluster
+  hosts: control
+  become: false
+
+  vars:
+    kubeconfig_path: /home/azureuser/.kube/config
+
+    kong_namespace: kong
+    kong_release_name: kong
+    kong_values_file: /tmp/kong-values.yml
+
+    kong_http_nodeport: 32080
+    kong_https_nodeport: 32443
+
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:{{ ansible_env.PATH }}"
+
+  tasks:
+    - name: Check Kubernetes cluster access
+      command: kubectl get nodes
+      register: cluster_nodes
+      changed_when: false
+
+    - name: Show cluster nodes
+      debug:
+        var: cluster_nodes.stdout_lines
+
+    - name: Check Helm is installed
+      command: helm version --short
+      register: helm_version
+      changed_when: false
+
+    - name: Show Helm version
+      debug:
+        var: helm_version.stdout
+
+    - name: Add Kong Helm repository
+      command: helm repo add kong https://charts.konghq.com
+      register: kong_repo
+      failed_when: kong_repo.rc != 0 and 'already exists' not in kong_repo.stderr
+      changed_when: "'has been added' in kong_repo.stdout"
+
+    - name: Update Helm repositories
+      command: helm repo update
+      changed_when: false
+
+    - name: Create Kong Helm values file
+      copy:
+        dest: "{{ kong_values_file }}"
+        mode: "0644"
+        content: |
+          gateway:
+            proxy:
+              type: NodePort
+              http:
+                enabled: true
+                nodePort: {{ kong_http_nodeport }}
+              tls:
+                enabled: true
+                nodePort: {{ kong_https_nodeport }}
+
+          controller:
+            ingressController:
+              enabled: true
+
+    - name: Install Kong Ingress Controller
+      command: >
+        helm upgrade --install {{ kong_release_name }} kong/ingress
+        --namespace {{ kong_namespace }}
+        --create-namespace
+        --values {{ kong_values_file }}
+        --wait
+        --timeout 10m
+      register: kong_install
+
+    - name: Show Kong installation output
+      debug:
+        var: kong_install.stdout_lines
+
+    - name: Show Kong pods
+      command: kubectl get pods -n {{ kong_namespace }} -o wide
+      register: kong_pods
+      changed_when: false
+
+    - name: Print Kong pods
+      debug:
+        var: kong_pods.stdout_lines
+
+    - name: Show Kong services
+      command: kubectl get svc -n {{ kong_namespace }} -o wide
+      register: kong_services
+      changed_when: false
+
+    - name: Print Kong services
+      debug:
+        var: kong_services.stdout_lines
+
+    - name: Show Ingress classes
+      command: kubectl get ingressclass
+      register: ingress_classes
+      changed_when: false
+
+    - name: Print Ingress classes
+      debug:
+        var: ingress_classes.stdout_lines
+
+    - name: Print Kong access details
+      debug:
+        msg:
+          - "Kong Ingress Controller installed."
+          - "HTTP NodePort:  http://40.81.233.225:{{ kong_http_nodeport }}"
+          - "HTTPS NodePort: https://40.81.233.225:{{ kong_https_nodeport }}"
+          - "Use ingressClassName: kong in your Ingress YAML."
