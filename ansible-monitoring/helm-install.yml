@@ -1,0 +1,93 @@
+---
+- name: Install Helm on RKE2 control node
+  hosts: control
+  become: yes
+
+  vars:
+    helm_key_url: "https://packages.buildkite.com/helm-linux/helm-debian/gpgkey"
+    helm_key_tmp: "/tmp/helm.gpg"
+    helm_keyring_path: "/usr/share/keyrings/helm.gpg"
+    helm_repo_file: "/etc/apt/sources.list.d/helm-stable-debian.list"
+    helm_expected_key_id: "DDF78C3E6EBB2D2CC223C95C62BA89D07698DBC6"
+
+  tasks:
+    - name: Install required packages for Helm repository
+      apt:
+        name:
+          - curl
+          - gpg
+          - apt-transport-https
+          - ca-certificates
+        state: present
+        update_cache: yes
+
+    - name: Remove old Helm repository file if it exists
+      file:
+        path: "{{ helm_repo_file }}"
+        state: absent
+
+    - name: Remove old Helm keyring if it exists
+      file:
+        path: "{{ helm_keyring_path }}"
+        state: absent
+
+    - name: Download current Helm APT signing key
+      get_url:
+        url: "{{ helm_key_url }}"
+        dest: "{{ helm_key_tmp }}"
+        mode: "0644"
+        force: yes
+
+    - name: Verify Helm APT signing key fingerprint
+      shell: |
+        set -e
+        KEY_ID="$(gpg --show-keys --with-colons {{ helm_key_tmp }} | awk -F: '$1 == "fpr" {print $10}' | head -n 1)"
+        echo "Downloaded Helm key fingerprint: $KEY_ID"
+        test "$KEY_ID" = "{{ helm_expected_key_id }}"
+      register: helm_key_verify
+      changed_when: false
+
+    - name: Show Helm key verification result
+      debug:
+        var: helm_key_verify.stdout_lines
+
+    - name: Convert Helm signing key to GPG keyring
+      shell: |
+        cat {{ helm_key_tmp }} | gpg --dearmor > {{ helm_keyring_path }}
+      args:
+        creates: "{{ helm_keyring_path }}"
+
+    - name: Set permission on Helm keyring
+      file:
+        path: "{{ helm_keyring_path }}"
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Add current Helm APT repository
+      copy:
+        dest: "{{ helm_repo_file }}"
+        content: |
+          deb [signed-by={{ helm_keyring_path }}] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Helm
+      apt:
+        name: helm
+        state: present
+
+    - name: Check Helm version
+      command: helm version --short
+      register: helm_version
+      changed_when: false
+      become: false
+
+    - name: Show Helm version
+      debug:
+        var: helm_version.stdout

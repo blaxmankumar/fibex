@@ -6,7 +6,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: frontend
   ports:
@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: dheerajkadve/gamefeed-frontend:latest
+          image: dheerajkadve/gamefeed-frontend:4
           imagePullPolicy: Always
           ports:
             - containerPort: 3000

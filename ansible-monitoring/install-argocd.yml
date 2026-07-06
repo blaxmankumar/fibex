@@ -1,0 +1,101 @@
+---
+- name: Install Argo CD on RKE2 cluster
+  hosts: control
+  become: yes
+
+  vars:
+    argocd_namespace: argocd
+    kubeconfig_path: /home/azureuser/.kube/config
+    argocd_manifest_url: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+  tasks:
+    - name: Check kubectl is available
+      command: kubectl version --client
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: kubectl_version
+      changed_when: false
+
+    - name: Print kubectl version
+      debug:
+        var: kubectl_version.stdout_lines
+
+    - name: Create Argo CD namespace
+      command: kubectl create namespace {{ argocd_namespace }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: create_namespace
+      changed_when: "'created' in create_namespace.stdout"
+      failed_when:
+        - create_namespace.rc != 0
+        - "'AlreadyExists' not in create_namespace.stderr"
+
+    - name: Install Argo CD official manifest
+      command: >
+        kubectl apply -n {{ argocd_namespace }}
+        --server-side
+        --force-conflicts
+        -f {{ argocd_manifest_url }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: install_argocd
+      changed_when: "'configured' in install_argocd.stdout or 'created' in install_argocd.stdout"
+
+    - name: Wait for Argo CD server deployment to become ready
+      command: kubectl rollout status deployment/argocd-server -n {{ argocd_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: false
+
+    - name: Wait for Argo CD repo server deployment to become ready
+      command: kubectl rollout status deployment/argocd-repo-server -n {{ argocd_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: false
+
+    - name: Wait for Argo CD application controller statefulset to become ready
+      command: kubectl rollout status statefulset/argocd-application-controller -n {{ argocd_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: false
+
+    - name: Show Argo CD pods
+      command: kubectl get pods -n {{ argocd_namespace }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: argocd_pods
+      changed_when: false
+
+    - name: Print Argo CD pods
+      debug:
+        var: argocd_pods.stdout_lines
+
+    - name: Show Argo CD services
+      command: kubectl get svc -n {{ argocd_namespace }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: argocd_services
+      changed_when: false
+
+    - name: Print Argo CD services
+      debug:
+        var: argocd_services.stdout_lines
+
+    - name: Get Argo CD initial admin password
+      shell: |
+        kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret \
+        -o jsonpath="{.data.password}" | base64 -d
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: argocd_admin_password
+      changed_when: false
+      failed_when: false
+
+    - name: Print Argo CD login details
+      debug:
+        msg:
+          - "Argo CD installed successfully."
+          - "Username: admin"
+          - "Password: {{ argocd_admin_password.stdout }}"
+          - "Access command: kubectl port-forward svc/argocd-server -n argocd 8081:443 --address 0.0.0.0"
+          - "Open in browser: https://YOUR_CONTROL_NODE_PUBLIC_IP:8081"

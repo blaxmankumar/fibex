@@ -1,0 +1,61 @@
+---
+- name: Configure kubectl for RKE2 master node
+  hosts: control
+  become: yes
+
+  vars:
+    kube_user: "azureuser"
+    kube_home: "/home/azureuser"
+
+  tasks:
+    - name: Check if RKE2 kubeconfig exists
+      stat:
+        path: /etc/rancher/rke2/rke2.yaml
+      register: rke2_kubeconfig
+
+    - name: Fail if RKE2 kubeconfig is not found
+      fail:
+        msg: "RKE2 kubeconfig not found. First install and start rke2-server."
+      when: not rke2_kubeconfig.stat.exists
+    - name: Create .kube directory
+      file:
+        path: "{{ kube_home }}/.kube"
+        state: directory
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+        mode: '0755'
+
+    - name: Copy RKE2 kubeconfig to user kube config
+      copy:
+        src: /etc/rancher/rke2/rke2.yaml
+        dest: "{{ kube_home }}/.kube/config"
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+        mode: '0600'
+        remote_src: yes
+
+    - name: Add RKE2 kubectl path to .bashrc
+      lineinfile:
+        path: "{{ kube_home }}/.bashrc"
+        line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+        state: present
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+
+    - name: Create kubectl symlink for direct use
+      file:
+        src: /var/lib/rancher/rke2/bin/kubectl
+        dest: /usr/local/bin/kubectl
+        state: link
+        force: yes
+
+    - name: Test kubectl command
+      command: kubectl get nodes
+      environment:
+        KUBECONFIG: "{{ kube_home }}/.kube/config"
+      register: kubectl_output
+      changed_when: false
+
+    - name: Print kubectl nodes output
+      debug:
+        var: kubectl_output.stdout_lines
