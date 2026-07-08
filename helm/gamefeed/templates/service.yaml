@@ -1,0 +1,22 @@
+{{- range $name, $svc := .Values.services }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $name }}
+    {{- include "gamefeed.labels" $ | nindent 4 }}
+spec:
+  type: {{ $svc.serviceType }}
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+      {{- if and (eq $svc.serviceType "NodePort") $svc.nodePort }}
+      nodePort: {{ $svc.nodePort }}
+      {{- end }}
+---
+{{- end }}

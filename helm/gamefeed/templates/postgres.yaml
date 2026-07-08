@@ -1,0 +1,79 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.postgres.serviceName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.postgres.serviceName }}
+    {{- include "gamefeed.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: postgres
+  selector:
+    app: {{ .Values.postgres.serviceName }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.postgres.serviceName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.postgres.serviceName }}
+    {{- include "gamefeed.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ .Values.postgres.serviceName }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.postgres.serviceName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.postgres.serviceName }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgres.port }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gamefeed-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            {{- if .Values.postgres.initdb.enabled }}
+            - name: postgres-init-script
+              mountPath: /docker-entrypoint-initdb.d/init-db.sh
+              subPath: init-db.sh
+            {{- end }}
+      volumes:
+        {{- if .Values.postgres.initdb.enabled }}
+        - name: postgres-init-script
+          configMap:
+            name: postgres-init-script
+            defaultMode: 0755
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+{{- end }}
