@@ -42,7 +42,7 @@ spec:
               until nc -z comment-service 8084; do echo waiting for comment-service; sleep 3; done
       containers:
         - name: api-gateway
-          image: battulalaxmankumar04/api-gateway:latest
+          image: battulalaxmankumar04/api-gateway:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

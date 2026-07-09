@@ -35,7 +35,7 @@ spec:
           command: ["sh", "-c", "until nc -z postgres-db 5432; do echo waiting for postgres-db; sleep 3; done"]
       containers:
         - name: user-service
-          image: battulalaxmankumar04/user-service:latest
+          image: battulalaxmankumar04/user-service:
           imagePullPolicy: Always
           ports:
             - containerPort: 8081
