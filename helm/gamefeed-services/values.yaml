@@ -1,0 +1,69 @@
+namespace: gamefeed
+
+image:
+  registry: battulalaxmankumar04
+  tag: latest
+  pullPolicy: Always
+
+services:
+  user-service:
+    imageName: user-service
+    replicas: 1
+    port: 8081
+    serviceType: ClusterIP
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/user_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD_SECRET: gamefeed-secret
+      JWT_SECRET_SECRET: gamefeed-secret
+
+  game-service:
+    imageName: game-service
+    replicas: 1
+    port: 8082
+    serviceType: ClusterIP
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/game_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD_SECRET: gamefeed-secret
+
+  review-service:
+    imageName: review-service
+    replicas: 1
+    port: 8083
+    serviceType: ClusterIP
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/review_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD_SECRET: gamefeed-secret
+
+  comment-service:
+    imageName: comment-service
+    replicas: 1
+    port: 8084
+    serviceType: ClusterIP
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/comment_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD_SECRET: gamefeed-secret
+
+  api-gateway:
+    imageName: api-gateway
+    replicas: 1
+    port: 8080
+    serviceType: NodePort
+    nodePort: 30081
+    env:
+      USER_SERVICE_URL: http://user-service:8081
+      GAME_SERVICE_URL: http://game-service:8082
+      REVIEW_SERVICE_URL: http://review-service:8083
+      COMMENT_SERVICE_URL: http://comment-service:8084
+
+  frontend:
+    imageName: frontend
+    replicas: 1
+    port: 3000
+    servicePort: 80
+    serviceType: NodePort
+    nodePort: 30080
+    env: {}

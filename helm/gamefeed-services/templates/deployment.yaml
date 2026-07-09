@@ -1,0 +1,63 @@
+{{- range $name, $svc := .Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $name }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: "{{ $.Values.image.registry }}/{{ $svc.imageName }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          env:
+            {{- if eq $name "user-service" }}
+            - name: SPRING_DATASOURCE_URL
+              value: "{{ $svc.env.SPRING_DATASOURCE_URL }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "{{ $svc.env.SPRING_DATASOURCE_USERNAME }}"
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gamefeed-secret
+                  key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gamefeed-secret
+                  key: JWT_SECRET
+            {{- else if or (eq $name "game-service") (eq $name "review-service") (eq $name "comment-service") }}
+            - name: SPRING_DATASOURCE_URL
+              value: "{{ $svc.env.SPRING_DATASOURCE_URL }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "{{ $svc.env.SPRING_DATASOURCE_USERNAME }}"
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gamefeed-secret
+                  key: POSTGRES_PASSWORD
+            {{- else if eq $name "api-gateway" }}
+            - name: USER_SERVICE_URL
+              value: "{{ $svc.env.USER_SERVICE_URL }}"
+            - name: GAME_SERVICE_URL
+              value: "{{ $svc.env.GAME_SERVICE_URL }}"
+            - name: REVIEW_SERVICE_URL
+              value: "{{ $svc.env.REVIEW_SERVICE_URL }}"
+            - name: COMMENT_SERVICE_URL
+              value: "{{ $svc.env.COMMENT_SERVICE_URL }}"
+            {{- end }}
+---
+{{- end }}

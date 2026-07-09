@@ -1,0 +1,21 @@
+{{- range $name, $svc := .Values.services }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $name }}
+spec:
+  type: {{ $svc.serviceType }}
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: http
+      port: {{ default $svc.port $svc.servicePort }}
+      targetPort: http
+      {{- if and (eq $svc.serviceType "NodePort") $svc.nodePort }}
+      nodePort: {{ $svc.nodePort }}
+      {{- end }}
+---
+{{- end }}
