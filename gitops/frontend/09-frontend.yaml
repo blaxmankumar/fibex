@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: dheerajkadve/gamefeed-frontend:4
+          image: battulalaxmankumar04/frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
